@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "92733736833",
+    "project_id": "webrtc-flutter-1c8be",
+    "storage_bucket": "webrtc-flutter-1c8be.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:92733736833:android:548065ba2b7178f726ca80",
+        "android_client_info": {
+          "package_name": "amar.spy.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPivBMK9JnpoFnF6PTQtZ9XnyDsE6wQys"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
