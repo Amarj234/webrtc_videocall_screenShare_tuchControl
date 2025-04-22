@@ -146,7 +146,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
           ? Stack(
         children: [
           GestureDetector(
-            onTapDown: (details) {
+            onPanUpdate: (details) {
               sendTouchEvent(details.globalPosition);
             },
             child: RTCVideoView(remoteRenderer),
