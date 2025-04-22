@@ -33,11 +33,12 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TOUCH_CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (call.method == "sendTouch") {
-                    val x = call.argument<Float>("x") ?: 0f
-                    val y = call.argument<Float>("y") ?: 0f
-                    val service = RemoteControlService()
-                    service.performTouch(x, y)
+                    val x = (call.argument<Double>("x") ?: 0.0).toFloat()
+                    val y = (call.argument<Double>("y") ?: 0.0).toFloat()
+
+                    RemoteControlService.instance?.performTouch(x, y)
                     result.success(null)
+
                 } else {
                     result.notImplemented()
                 }

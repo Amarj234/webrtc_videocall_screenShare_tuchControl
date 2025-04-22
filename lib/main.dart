@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +15,7 @@ import 'firebase_options.dart';
 void openAccessibilitySettings() {
   final intent = AndroidIntent(
     action: 'android.settings.ACCESSIBILITY_SETTINGS',
+    flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
   );
   intent.launch();
 }
