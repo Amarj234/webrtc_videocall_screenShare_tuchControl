@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
-class MultiUserSignaling {
+class AudioSignaling {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final String _userId;
   final String _roomId;
+  final String _storedEmail;
   final bool _isBroadcaster;
 
   RTCPeerConnection? _peerConnection;
@@ -16,51 +17,14 @@ class MultiUserSignaling {
   Function(String userId)? onUserJoined;
   Function(String userId)? onUserLeft;
   Function(dynamic error)? onError;
-  Function()? onRoomCreated;
+  Function()? onRoomReady;
 
-  MultiUserSignaling({
+  AudioSignaling( {
     required String userId,
     required String roomId,
+    required String storedEmail,
     required bool isBroadcaster,
-  }) : _userId = userId, _roomId = roomId, _isBroadcaster = isBroadcaster;
-
-
-  // Add to MultiUserSignaling class
-
-  static Future<List<Map<String, dynamic>>> getActiveBroadcasts() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('broadcast_rooms')
-        .where('broadcasterId', isNotEqualTo: null)
-        .get();
-
-    return snapshot.docs.map((doc) {
-      final data = doc.data();
-      return {
-        'id': doc.id,
-        'broadcasterId': data['broadcasterId'],
-        'createdAt': data['createdAt'],
-      };
-    }).toList();
-  }
-
-  static Future<void> cleanupRoom(String roomId) async {
-    final roomRef = FirebaseFirestore.instance.collection('broadcast_rooms').doc(roomId);
-    final batch = FirebaseFirestore.instance.batch();
-
-    // Delete all subcollections
-    final collections = ['participants', 'offers', 'answers', 'candidates'];
-    for (final col in collections) {
-      final snapshot = await roomRef.collection(col).get();
-      for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
-      }
-    }
-
-    // Delete room
-    batch.delete(roomRef);
-    await batch.commit();
-  }
-
+  }) : _userId = userId, _roomId = roomId, _isBroadcaster = isBroadcaster,_storedEmail=storedEmail;
 
   Future<void> initialize() async {
     try {
@@ -69,12 +33,12 @@ class MultiUserSignaling {
       if (_isBroadcaster) {
         _localStream = await navigator.mediaDevices.getUserMedia({
           'audio': true,
-          'video': {'facingMode': 'user'},
+          'video': false, // Audio only
         });
       }
 
       _setupParticipantsListener();
-      onRoomCreated?.call();
+      onRoomReady?.call();
 
     } catch (e) {
       onError?.call(e);
@@ -82,24 +46,26 @@ class MultiUserSignaling {
   }
 
   Future<void> _setupRoom() async {
-    await _db.collection('broadcast_rooms').doc(_roomId).set({
+    await _db.collection('audio_rooms').doc(_roomId).set({
       'createdAt': FieldValue.serverTimestamp(),
       'broadcasterId': _isBroadcaster ? _userId : null,
+      'isActive': true,
     }, SetOptions(merge: true));
 
-    await _db.collection('broadcast_rooms')
+    await _db.collection('audio_rooms')
         .doc(_roomId)
         .collection('participants')
         .doc(_userId)
         .set({
       'userId': _userId,
+      'storedEmail': _storedEmail,
       'isBroadcaster': _isBroadcaster,
       'joinedAt': FieldValue.serverTimestamp(),
     });
   }
 
   void _setupParticipantsListener() {
-    _db.collection('broadcast_rooms')
+    _db.collection('audio_rooms')
         .doc(_roomId)
         .collection('participants')
         .snapshots()
@@ -124,7 +90,7 @@ class MultiUserSignaling {
       _peerConnections[peerId] = pc;
 
       if (_isBroadcaster && _localStream != null) {
-        _localStream!.getTracks().forEach((track) {
+        _localStream!.getAudioTracks().forEach((track) {
           pc.addTrack(track, _localStream!);
         });
       }
@@ -135,7 +101,7 @@ class MultiUserSignaling {
         final offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        await _db.collection('broadcast_rooms')
+        await _db.collection('audio_rooms')
             .doc(_roomId)
             .collection('offers')
             .doc(_userId)
@@ -162,7 +128,7 @@ class MultiUserSignaling {
 
     pc.onIceCandidate = (candidate) async {
       if (candidate != null) {
-        await _db.collection('broadcast_rooms')
+        await _db.collection('audio_rooms')
             .doc(_roomId)
             .collection('candidates')
             .add({
@@ -175,7 +141,7 @@ class MultiUserSignaling {
     };
 
     pc.onTrack = (RTCTrackEvent event) {
-      if (event.track.kind == 'video' || event.track.kind == 'audio') {
+      if (event.track.kind == 'audio') {
         onRemoteStreamAdded?.call(event.streams[0]);
       }
     };
@@ -190,7 +156,7 @@ class MultiUserSignaling {
   }
 
   void _listenForOffers(RTCPeerConnection pc) {
-    _db.collection('broadcast_rooms')
+    _db.collection('audio_rooms')
         .doc(_roomId)
         .collection('offers')
         .where('to', isEqualTo: _userId)
@@ -207,7 +173,7 @@ class MultiUserSignaling {
         final answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        await _db.collection('broadcast_rooms')
+        await _db.collection('audio_rooms')
             .doc(_roomId)
             .collection('answers')
             .add({
@@ -221,7 +187,7 @@ class MultiUserSignaling {
   }
 
   void _setupIceCandidateExchange(String peerId, RTCPeerConnection pc) {
-    _db.collection('broadcast_rooms')
+    _db.collection('audio_rooms')
         .doc(_roomId)
         .collection('candidates')
         .where('from', isEqualTo: peerId)
@@ -252,17 +218,44 @@ class MultiUserSignaling {
     _peerConnections.removeWhere((key, value) => value == pc);
   }
 
+  Future<void> toggleMute(bool muted) async {
+    if (_localStream != null) {
+      _localStream!.getAudioTracks().forEach((track) {
+        track.enabled = !muted;
+      });
+    }
+  }
+
   Future<void> disconnect() async {
-    _peerConnections.values.forEach((pc) => pc.close());
+    // Close all peer connections
+    for (final pc in _peerConnections.values) {
+      await pc.close();
+    }
     _peerConnections.clear();
 
+    // Clean up local stream
     _localStream?.getTracks().forEach((track) => track.stop());
     _localStream = null;
 
-    await _db.collection('broadcast_rooms')
+    // Remove user from participants
+    await _db.collection('audio_rooms')
         .doc(_roomId)
         .collection('participants')
         .doc(_userId)
         .delete();
+
+    // If broadcaster, mark room as inactive
+    if (_isBroadcaster) {
+      await _db.collection('audio_rooms').doc(_roomId).update({
+        'isActive': false,
+      });
+    }
+  }
+
+  static Stream<QuerySnapshot> getActiveRooms() {
+    return FirebaseFirestore.instance
+        .collection('audio_rooms')
+        .where('isActive', isEqualTo: true)
+        .snapshots();
   }
 }

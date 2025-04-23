@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'audio/audio_brodcast.dart';
+
+import 'audio/audio_room_list.dart';
 import 'homepage/home_screen.dart';
-import 'multipleBrodcast/video_brodcast.dart';
+import 'multipleBrodcast/brodcast_home.dart';
+
 
 class DashboardScreen extends StatelessWidget {
   @override
@@ -17,8 +19,8 @@ class DashboardScreen extends StatelessWidget {
         body: TabBarView(
           children: [
             HomeScreen(),          // You already have this
-            VideoBroadcastScreen(),
-            AudioBroadcastScreen(),
+            BroadcastListPage(),
+            AudioRoomListPage(),
           ],
         ),
         bottomNavigationBar:TabBar(
