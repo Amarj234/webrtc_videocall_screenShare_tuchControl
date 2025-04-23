@@ -74,6 +74,43 @@ class _VideoCallPageState extends State<VideoCallPage> {
     });
   }
 
+  void sendTouchEvent(Offset localPosition) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    // Simulated remote screen resolution
+    final remoteScreenWidth = 1080;
+    final remoteScreenHeight = 2400;
+
+    final x = localPosition.dx * remoteScreenWidth / screenWidth;
+    final y = localPosition.dy * remoteScreenHeight / screenHeight;
+
+    TouchController.sendTouch(x, y);
+    showTapIndicator(context, localPosition);
+  }
+
+  void showTapIndicator(BuildContext context, Offset position) {
+    final overlay = Overlay.of(context);
+    final overlayEntry = OverlayEntry(
+      builder: (_) => Positioned(
+        left: position.dx - 15,
+        top: position.dy - 15,
+        child: IgnorePointer(
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.red.withOpacity(0.5),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(overlayEntry);
+    Future.delayed(Duration(milliseconds: 300), () => overlayEntry.remove());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,7 +145,12 @@ class _VideoCallPageState extends State<VideoCallPage> {
       body: inCalling
           ? Stack(
         children: [
-          RTCVideoView(remoteRenderer),
+          GestureDetector(
+            onPanUpdate: (details) {
+              sendTouchEvent(details.globalPosition);
+            },
+            child: RTCVideoView(remoteRenderer),
+          ),
           Positioned(
             top: 20,
             left: 20,

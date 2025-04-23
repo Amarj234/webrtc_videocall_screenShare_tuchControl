@@ -1,14 +1,9 @@
-import 'dart:convert';
-
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:webrtc_screen_share/video_call_page.dart';
-
-import 'background_service.dart';
+import 'package:webrtc_screen_share/auth/splash_screen.dart';
 import 'firebase_options.dart';
 
 
@@ -39,7 +34,7 @@ void main() async{
   FirebaseApp app = await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  openAccessibilitySettings();
+ // openAccessibilitySettings();
   startScreenCaptureService();
  // initializeService();
   print("amarj234 ${app.options.appId}");
@@ -59,7 +54,7 @@ class MyApp extends StatelessWidget {
 
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: VideoCallPage(),
+      home: SplashScreen(),
     );
   }
 }

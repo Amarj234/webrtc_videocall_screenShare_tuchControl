@@ -3,7 +3,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 
 class Signaling {
-  final  db = FirebaseFirestore.instance;
+  FirebaseFirestore db = FirebaseFirestore.instance;
   String? _roomId;
   Map<String, dynamic> _configurationServer = {
     'iceServers': [
@@ -42,23 +42,23 @@ class Signaling {
     final roomRef = db.collection('rooms').doc();
     _roomId = roomRef.id;
 
-     _localStream = await navigator.mediaDevices.getUserMedia({
-       'audio': true,
-       'video': {
-         'facingMode': 'user',
-       },
-    //   'video': false, // if you want to disable video and only use audio
+    _localStream = await navigator.mediaDevices.getUserMedia({
+      'audio': true,
+      'video': {
+        'facingMode': 'user',
+      },
+      //   'video': false, // if you want to disable video and only use audio
 
-     });
+    });
 
-  //  _localStream =   await navigator.mediaDevices.getDisplayMedia({
-  //    'video': true,
-  //    'audio': false, // optional, depending on whether you want to capture system audio
- //   });
+    //  _localStream =   await navigator.mediaDevices.getDisplayMedia({
+    //    'video': true,
+    //    'audio': false, // optional, depending on whether you want to capture system audio
+    //   });
 
-   // _localStream.getVideoTracks().forEach((track) {
+    // _localStream.getVideoTracks().forEach((track) {
 //      track.enabled = true;
-   // });
+    // });
 
     onLocalStream.call(_localStream);
 
@@ -190,22 +190,22 @@ class Signaling {
     if (roomSnapshot.exists) {
       print('Create PeerConnection with configuration: $_configurationServer');
 
-     _localStream = await navigator.mediaDevices.getUserMedia({
-       'audio': true,
+      _localStream = await navigator.mediaDevices.getUserMedia({
+        'audio': true,
         'video': {
-           'facingMode': 'user',
-      },
-     });
+          'facingMode': 'user',
+        },
+      });
 
-   //   _localStream =   await navigator.mediaDevices.getDisplayMedia({
-    //    'video': true,
-    //    'audio': false, // optional, depending on whether you want to capture system audio
-    //  });
+      //   _localStream =   await navigator.mediaDevices.getDisplayMedia({
+      //    'video': true,
+      //    'audio': false, // optional, depending on whether you want to capture system audio
+      //  });
 
       // Remove screen video tracks
-    //  _localStream.getVideoTracks().forEach((track) {
-     //   track.enabled = true;
-    //  });
+      //  _localStream.getVideoTracks().forEach((track) {
+      //   track.enabled = true;
+      //  });
 
       onLocalStream.call(_localStream);
 
