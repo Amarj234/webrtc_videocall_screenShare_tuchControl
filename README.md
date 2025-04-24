@@ -3,14 +3,14 @@
 A new Flutter project.
 
 ## Getting Started
-how to connect adb without usb connect
+how to connect adb without usb connect<br>
 
-tcp restart cmd     $> adb tcpip 5555 ,
-tcp enable for wifi $> adb -s 0J73930122216853 tcpip 5555,
-adb coonnect device $> adb connect 192.168.1.109,
+tcp restart cmd     $> adb tcpip 5555 ,<br>
+tcp enable for wifi $> adb -s 0J73930122216853 tcpip 5555,<br>
+adb coonnect device $> adb connect 192.168.1.109,<br>
 
-this is serial no (0J73930122216853)
-and this is ip address (192.168.1.109)
+this is serial no (0J73930122216853)<br>
+and this is ip address (192.168.1.109)<br>
 
 
 
