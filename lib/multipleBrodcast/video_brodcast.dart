@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'miltiple_signaling.dart';
-
+import 'package:get_storage/get_storage.dart';
+import 'broadcast_signaling.dart';
 
 class MultiUserBroadcastPage extends StatefulWidget {
   final bool isBroadcaster;
@@ -14,95 +14,99 @@ class MultiUserBroadcastPage extends StatefulWidget {
   });
 
   @override
-  _MultiUserBroadcastPageState createState() => _MultiUserBroadcastPageState();
+  State<MultiUserBroadcastPage> createState() => _MultiUserBroadcastPageState();
 }
 
 class _MultiUserBroadcastPageState extends State<MultiUserBroadcastPage> {
-  late MultiUserSignaling signaling;
+  BroadcastSignaling? signaling;
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final Map<String, RTCVideoRenderer> remoteRenderers = {};
   bool isMuted = false;
-  bool isSharingScreen = false;
-  String userId = DateTime.now().millisecondsSinceEpoch.toString();
+  bool isSpeaking = false;
+  bool isConnected = false;
+  int participantCount = 0;
+  final box = GetStorage();
 
   @override
   void initState() {
     super.initState();
-    _initRenderers();
-    _initSignaling();
+    initRenderers().then((_) => initSignaling());
   }
 
-  Future<void> _initRenderers() async {
+  Future<void> initRenderers() async {
     await localRenderer.initialize();
   }
 
-  void _initSignaling() {
-    signaling = MultiUserSignaling(
+  Future<void> initSignaling() async {
+    final String userId = box.read('email') ?? DateTime.now().millisecondsSinceEpoch.toString();
+
+    signaling = BroadcastSignaling(
       userId: userId,
-      roomId: widget.roomId,
-      isBroadcaster: widget.isBroadcaster,
+      onLocalStream: (stream) {
+        localRenderer.srcObject = stream;
+        setState(() {});
+      },
+      onAddRemoteStream: (id, stream) async {
+        final renderer = RTCVideoRenderer();
+        await renderer.initialize();
+        renderer.srcObject = stream;
+        setState(() {
+          remoteRenderers[id] = renderer;
+          participantCount = remoteRenderers.length;
+        });
+      },
+      onRemoveRemoteStream: (id) {
+      //  setState(() {
+          remoteRenderers[id]?.dispose();
+          remoteRenderers.remove(id);
+          participantCount = remoteRenderers.length;
+       // });
+      },
+      onError: (error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $error')),
+        );
+      },
     );
 
-    signaling.onRemoteStreamAdded = (stream) {
-      final renderer = RTCVideoRenderer();
-      renderer.initialize().then((_) {
-        renderer.srcObject = stream;
-        final streamId = stream.id;
-        setState(() {
-          remoteRenderers[streamId] = renderer;
-        });
-      });
-    };
+    if (widget.isBroadcaster) {
+      await signaling?.startBroadcast(widget.roomId);
+    } else {
+      await signaling?.joinBroadcast(widget.roomId);
+    }
 
-    signaling.onUserJoined = (userId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('User $userId joined')),
-      );
-    };
+    setState(() => isConnected = true);
+  }
 
-    signaling.onUserLeft = (userId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('User $userId left')),
-      );
-    };
+  void toggleMute() {
+    setState(() => isMuted = !isMuted);
+    signaling?.toggleMute(isMuted);
+  }
 
-    signaling.onError = (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $error')),
-      );
-    };
+  void toggleSpeaking() {
+    setState(() => isSpeaking = !isSpeaking);
+    signaling?.toggleMute(isSpeaking);
+  }
 
-    signaling.onRoomCreated = () {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Room ready for participants')),
-      );
-    };
-
-    signaling.initialize();
+  Future<void> disconnect() async {
+    if (widget.isBroadcaster) {
+      await signaling?.endBroadcast();
+    } else {
+      await signaling?.leaveBroadcast();
+    }
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   @override
   void dispose() {
     localRenderer.dispose();
-    for (final renderer in remoteRenderers.values) {
+    for (var renderer in remoteRenderers.values) {
       renderer.dispose();
     }
-    signaling.disconnect();
+    signaling?.dispose();
     super.dispose();
-  }
-
-  void toggleMute() {
-    setState(() {
-      isMuted = !isMuted;
-    });
-    // Implement mute functionality in signaling
-  }
-
-  void toggleScreenShare() async {
-    setState(() {
-      isSharingScreen = !isSharingScreen;
-    });
-    // Implement screen share functionality in signaling
   }
 
   @override
@@ -110,66 +114,118 @@ class _MultiUserBroadcastPageState extends State<MultiUserBroadcastPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.isBroadcaster ? 'Broadcaster' : 'Viewer'),
-      ),
-      body: Stack(
-        children: [
-          // Remote streams
-          for (final entry in remoteRenderers.entries)
-            Positioned.fill(
-              child: RTCVideoView(entry.value),
-            ),
-
-          // Local preview
-          if (widget.isBroadcaster)
-            Positioned(
-              bottom: 20,
-              right: 20,
-              child: Container(
-                width: 120,
-                height: 160,
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: RTCVideoView(localRenderer, mirror: true),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Center(
+              child: Text(
+                'Participants: $participantCount',
+                style: const TextStyle(fontSize: 16),
               ),
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: 2,
+              children: [
+                // Local video preview
+                Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    border: Border.all(),
+                    color: Colors.black,
+                  ),
+                  child: Stack(
+                    children: [
+                      if (localRenderer.srcObject != null)
+                        RTCVideoView(
+                          localRenderer,
+                          mirror: true,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        ),
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          color: Colors.black54,
+                          child: Text(
+                            'You (${isMuted ? 'Muted' : 'Speaking'})',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Remote participants
+                ...remoteRenderers.entries.map((entry) => Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    border: Border.all(),
+                    color: Colors.black,
+                  ),
+                  child: Stack(
+                    children: [
+                      RTCVideoView(
+                        entry.value,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      ),
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          color: Colors.black54,
+                          child: Text(
+                            'Participant ${entry.key.substring(0, 6)}',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+            ),
+          ),
+          if (!isConnected)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: CircularProgressIndicator(),
             ),
         ],
       ),
-      floatingActionButton: widget.isBroadcaster
-          ? Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (!widget.isBroadcaster)
+            FloatingActionButton(
+              heroTag: "speak",
+              onPressed: toggleSpeaking,
+              backgroundColor: isSpeaking ? Colors.green : Colors.grey,
+              child: Icon(isSpeaking ? Icons.mic : Icons.mic_off),
+            ),
+          const SizedBox(height: 16),
+          if (widget.isBroadcaster)
+            FloatingActionButton(
+              heroTag: "mute",
+              onPressed: toggleMute,
+              backgroundColor: isMuted ? Colors.red : Colors.green,
+              child: Icon(isMuted ? Icons.mic_off : Icons.mic),
+            ),
+          const SizedBox(height: 16),
           FloatingActionButton(
-            heroTag: "1tg",
-            onPressed: toggleMute,
-            backgroundColor: isMuted ? Colors.red : Colors.green,
-            child: Icon(isMuted ? Icons.mic_off : Icons.mic),
-          ),
-          const SizedBox(width: 20),
-          FloatingActionButton(
-            heroTag: "11tg",
-            onPressed: toggleScreenShare,
-            backgroundColor: isSharingScreen ? Colors.blue : Colors.grey,
-            child: Icon(Icons.screen_share),
-          ),
-          const SizedBox(width: 20),
-          FloatingActionButton(
-            heroTag: "1tg3",
-            onPressed: () {
-              Navigator.pop(context);
-            },
+            heroTag: "end",
+            onPressed: disconnect,
             backgroundColor: Colors.red,
             child: const Icon(Icons.call_end),
           ),
         ],
-      )
-          : FloatingActionButton(
-        onPressed: () {
-          Navigator.pop(context);
-        },
-        backgroundColor: Colors.red,
-        child: const Icon(Icons.call_end),
       ),
     );
   }

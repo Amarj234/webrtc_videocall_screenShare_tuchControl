@@ -1,10 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
+
 import 'audio_broadcast_signaling.dart';
 import 'audio_brodcast.dart';
 
 class AudioRoomListPage extends StatelessWidget {
+  final box = GetStorage();
+
    AudioRoomListPage({super.key});
 
   @override
@@ -53,14 +56,14 @@ class AudioRoomListPage extends StatelessWidget {
 
   Widget _buildRoomItem(DocumentSnapshot room, BuildContext context) {
     final roomData = room.data() as Map<String, dynamic>;
-    final broadcasterId = roomData['broadcasterId'] ?? 'Unknown';
+    final broadcasterEmail = roomData['broadcasterEmail'] ?? 'Unknown';
     final createdAt = roomData['createdAt']?.toDate() ?? DateTime.now();
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: ListTile(
         leading: const Icon(Icons.radio, color: Colors.blue),
-        title: Text('Broadcast by ${broadcasterId.substring(0, 6)}...'),
+        title: Text('Broadcast by ${broadcasterEmail.split('@').first}'),
         subtitle: Text('Started ${_formatTime(createdAt)}'),
         trailing: const Icon(Icons.headphones),
         onTap: () => _joinRoom(context, room.id),
@@ -96,7 +99,7 @@ class AudioRoomListPage extends StatelessWidget {
       ),
     );
   }
-  final box = GetStorage();
+
   void _createNewRoom(BuildContext context) {
     final storedEmail = box.read('email');
     final roomId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -104,7 +107,7 @@ class AudioRoomListPage extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => AudioBroadcastPage(
-          storedEmail:storedEmail,
+          storedEmail: storedEmail,
           isBroadcaster: true,
           roomId: roomId,
         ),

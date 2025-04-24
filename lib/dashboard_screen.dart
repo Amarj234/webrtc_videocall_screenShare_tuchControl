@@ -12,10 +12,7 @@ class DashboardScreen extends StatelessWidget {
     return DefaultTabController(
       length: 3, // Three tabs
       child: Scaffold(
-        appBar: AppBar(
-          title: Text("Broadcast Hub"),
 
-        ),
         body: TabBarView(
           children: [
             HomeScreen(),          // You already have this
