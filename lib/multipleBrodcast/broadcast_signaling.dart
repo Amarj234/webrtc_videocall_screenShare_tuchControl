@@ -103,7 +103,7 @@ class BroadcastSignaling {
         if (change.type == DocumentChangeType.added && change.doc.id != userId) {
           await _connectToPeer(change.doc.id);
         } else if (change.type == DocumentChangeType.removed) {
-          await _removePeerConnection(change.doc.id);
+           _removePeerConnection(change.doc.id);
           onRemoveRemoteStream?.call(change.doc.id);
         }
       }
@@ -245,10 +245,22 @@ class BroadcastSignaling {
     };
   }
 
-  Future<void> _removePeerConnection(String peerId) async {
-    final pc = _peerConnections.remove(peerId);
-    await pc?.close();
+
+  void _removePeerConnection(String peerId) {
+    final pc = _peerConnections[peerId];
+    if (pc != null) {
+      pc.close();
+      _peerConnections.remove(peerId);
+      _db.collection('broadcast_rooms')
+          .doc(_roomId)
+          .collection('participants')
+          .doc(peerId)
+          .delete();
+    }
   }
+
+
+
 
   Future<void> toggleMute(bool muted) async {
     if (_localStream != null) {

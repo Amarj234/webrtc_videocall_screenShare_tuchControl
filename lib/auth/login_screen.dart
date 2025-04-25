@@ -4,6 +4,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:webrtc_screen_share/auth/register_screen.dart';
 import 'package:webrtc_screen_share/auth/user_store.dart';
 
+import '../dashboard_screen.dart';
 import '../homepage/home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -31,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       box.write('isLoggedIn', true);
       box.write('email', _emailController.text.trim());
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeScreen()));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => DashboardScreen()));
     }
   }
 

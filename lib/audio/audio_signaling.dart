@@ -6,13 +6,12 @@ class AudioSignaling {
   final String _userId;
   final String _roomId;
   final bool _isBroadcaster;
-  final String? _storedEmail;
 
   MediaStream? _localStream;
   final Map<String, RTCPeerConnection> _peerConnections = {};
+  final Map<String, MediaStream> _remoteStreams = {};
 
-  // Callbacks
-  Function(MediaStream stream)? onRemoteStreamAdded;
+  Function(String userId, MediaStream stream)? onRemoteStreamAdded;
   Function(String userId)? onUserJoined;
   Function(String userId)? onUserLeft;
   Function(dynamic error)? onError;
@@ -22,12 +21,9 @@ class AudioSignaling {
     required String userId,
     required String roomId,
     required bool isBroadcaster,
-    String? storedEmail,
-  })
-      : _userId = userId,
+  })  : _userId = userId,
         _roomId = roomId,
-        _isBroadcaster = isBroadcaster,
-        _storedEmail = storedEmail;
+        _isBroadcaster = isBroadcaster;
 
   Future<void> initialize() async {
     try {
@@ -36,62 +32,59 @@ class AudioSignaling {
       _setupParticipantsListener();
       onRoomReady?.call();
     } catch (e) {
-      onError?.call("Initialization error: $e");
+      onError?.call(e);
     }
   }
 
   Future<void> _initLocalStream() async {
-    try {
-      _localStream = await navigator.mediaDevices.getUserMedia({
-        'audio': true,
-        'video': false, // Audio-only for the broadcaster
-      });
-      print("Local stream initialized: ${_localStream?.id}");
-    } catch (e) {
-      onError?.call("Error accessing media devices: $e");
-    }
+    final constraints = {
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+      },
+      'video': false,
+    };
+
+    _localStream = await navigator.mediaDevices.getUserMedia(constraints);
   }
 
   Future<void> _setupRoom() async {
-    try {
-      await _db.collection('audio_rooms').doc(_roomId).set({
-        'createdAt': FieldValue.serverTimestamp(),
-        'broadcasterId': _isBroadcaster ? _userId : null,
-        'broadcasterEmail': _isBroadcaster ? _storedEmail : null,
-        'isActive': true,
-      }, SetOptions(merge: true));
+    await _db.collection('audio_rooms').doc(_roomId).set({
+      'createdAt': FieldValue.serverTimestamp(),
+      'broadcasterId': _isBroadcaster ? _userId : null,
+      'isActive': true,
+    }, SetOptions(merge: true));
 
-      await _db.collection('audio_rooms')
-          .doc(_roomId)
-          .collection('participants')
-          .doc(_userId)
-          .set({
-        'userId': _userId,
-        'name': _storedEmail ?? 'Anonymous',
-        'email': _storedEmail,
-        'isBroadcaster': _isBroadcaster,
-        'isSpeaking': false,
-        'joinedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      onError?.call("Error setting up room: $e");
-    }
+    await _db
+        .collection('audio_rooms')
+        .doc(_roomId)
+        .collection('participants')
+        .doc(_userId)
+        .set({
+      'userId': _userId,
+      'isBroadcaster': _isBroadcaster,
+      'joinedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   void _setupParticipantsListener() {
-    _db.collection('audio_rooms')
+    _db
+        .collection('audio_rooms')
         .doc(_roomId)
         .collection('participants')
         .snapshots()
         .listen((snapshot) async {
       for (final change in snapshot.docChanges) {
-        if (change.type == DocumentChangeType.added &&
-            change.doc.id != _userId) {
-          onUserJoined?.call(change.doc.id);
-          await _connectToPeer(change.doc.id);
+        final peerId = change.doc.id;
+        if (peerId == _userId) continue;
+
+        if (change.type == DocumentChangeType.added) {
+          onUserJoined?.call(peerId);
+          await _connectToPeer(peerId);
         } else if (change.type == DocumentChangeType.removed) {
-          onUserLeft?.call(change.doc.id);
-          _removePeerConnection(change.doc.id);
+          onUserLeft?.call(peerId);
+          _removePeerConnection(peerId);
         }
       }
     });
@@ -103,10 +96,9 @@ class AudioSignaling {
       _peerConnections[peerId] = pc;
 
       if (_localStream != null) {
-        _localStream!.getAudioTracks().forEach((track) {
+        for (var track in _localStream!.getAudioTracks()) {
           pc.addTrack(track, _localStream!);
-        });
-        print("Added local audio tracks to peer connection");
+        }
       }
 
       _setupIceCandidateExchange(peerId, pc);
@@ -115,10 +107,11 @@ class AudioSignaling {
         final offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        await _db.collection('audio_rooms')
+        await _db
+            .collection('audio_rooms')
             .doc(_roomId)
             .collection('offers')
-            .doc(_userId)
+            .doc('$_userId-$peerId')
             .set({
           'from': _userId,
           'to': peerId,
@@ -126,10 +119,12 @@ class AudioSignaling {
           'type': offer.type,
         });
       } else {
-        _listenForOffers(pc);
+        _listenForOffers(pc, peerId);
       }
+
+      _listenForAnswers(pc, peerId);
     } catch (e) {
-      onError?.call("Error connecting to peer: $e");
+      onError?.call(e);
     }
   }
 
@@ -142,7 +137,8 @@ class AudioSignaling {
 
     pc.onIceCandidate = (candidate) async {
       if (candidate != null) {
-        await _db.collection('audio_rooms')
+        await _db
+            .collection('audio_rooms')
             .doc(_roomId)
             .collection('candidates')
             .add({
@@ -155,23 +151,19 @@ class AudioSignaling {
     };
 
     pc.onTrack = (RTCTrackEvent event) {
-      if (event.track.kind == 'audio') {
-        print("Remote audio track received: ${event.streams[0].id}");
-        onRemoteStreamAdded?.call(event.streams[0]);
-      }
-    };
-
-    pc.onIceConnectionState = (state) {
-      if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
-        _removePeerConnectionByPC(pc);
+      if (event.track.kind == 'audio' && event.streams.isNotEmpty) {
+        final stream = event.streams[0];
+        _remoteStreams[stream.id] = stream;
+        onRemoteStreamAdded?.call(stream.id, stream);
       }
     };
 
     return pc;
   }
 
-  void _listenForOffers(RTCPeerConnection pc) {
-    _db.collection('audio_rooms')
+  void _listenForOffers(RTCPeerConnection pc, String peerId) {
+    _db
+        .collection('audio_rooms')
         .doc(_roomId)
         .collection('offers')
         .where('to', isEqualTo: _userId)
@@ -179,16 +171,15 @@ class AudioSignaling {
         .listen((snapshot) async {
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final offer = RTCSessionDescription(
-          data['sdp'],
-          data['type'],
-        );
+        if (data['from'] != peerId) continue;
 
+        final offer = RTCSessionDescription(data['sdp'], data['type']);
         await pc.setRemoteDescription(offer);
         final answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        await _db.collection('audio_rooms')
+        await _db
+            .collection('audio_rooms')
             .doc(_roomId)
             .collection('answers')
             .add({
@@ -201,8 +192,27 @@ class AudioSignaling {
     });
   }
 
+  void _listenForAnswers(RTCPeerConnection pc, String peerId) {
+    _db
+        .collection('audio_rooms')
+        .doc(_roomId)
+        .collection('answers')
+        .where('to', isEqualTo: _userId)
+        .snapshots()
+        .listen((snapshot) async {
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if (data['from'] != peerId) continue;
+
+        final answer = RTCSessionDescription(data['sdp'], data['type']);
+        await pc.setRemoteDescription(answer);
+      }
+    });
+  }
+
   void _setupIceCandidateExchange(String peerId, RTCPeerConnection pc) {
-    _db.collection('audio_rooms')
+    _db
+        .collection('audio_rooms')
         .doc(_roomId)
         .collection('candidates')
         .where('from', isEqualTo: peerId)
@@ -221,48 +231,13 @@ class AudioSignaling {
   }
 
   Future<void> toggleMute(bool muted) async {
-    if (_localStream != null) {
-      _localStream!.getAudioTracks().forEach((track) {
-        track.enabled = !muted;
-      });
-      await _updateSpeakingStatus(!muted);
-    }
-  }
-
-  Future<void> _updateSpeakingStatus(bool isSpeaking) async {
-    await _db.collection('audio_rooms')
-        .doc(_roomId)
-        .collection('participants')
-        .doc(_userId)
-        .update({
-      'isSpeaking': isSpeaking,
-      'lastActive': FieldValue.serverTimestamp(),
+    _localStream?.getAudioTracks().forEach((track) {
+      track.enabled = !muted;
     });
   }
 
-  int getListenerCount() {
-    return _peerConnections.length;
-  }
-
-  List<String> getListenerIds() {
-    return _peerConnections.keys.toList();
-  }
-
-  void _removePeerConnection(String peerId) {
-    final pc = _peerConnections[peerId];
-    if (pc != null) {
-      pc.close();
-      _peerConnections.remove(peerId);
-    }
-  }
-
-  void _removePeerConnectionByPC(RTCPeerConnection pc) {
-    pc.close();
-    _peerConnections.removeWhere((key, value) => value == pc);
-  }
-
   Future<void> disconnect() async {
-    for (final pc in _peerConnections.values) {
+    for (var pc in _peerConnections.values) {
       await pc.close();
     }
     _peerConnections.clear();
@@ -270,7 +245,8 @@ class AudioSignaling {
     _localStream?.getTracks().forEach((track) => track.stop());
     _localStream = null;
 
-    await _db.collection('audio_rooms')
+    await _db
+        .collection('audio_rooms')
         .doc(_roomId)
         .collection('participants')
         .doc(_userId)
@@ -283,11 +259,16 @@ class AudioSignaling {
     }
   }
 
+  void _removePeerConnection(String peerId) {
+    _peerConnections[peerId]?.close();
+    _peerConnections.remove(peerId);
+    _remoteStreams.remove(peerId);
+  }
+
   static Stream<QuerySnapshot> getActiveRooms() {
     return FirebaseFirestore.instance
         .collection('audio_rooms')
         .where('isActive', isEqualTo: true)
         .snapshots();
   }
-
 }

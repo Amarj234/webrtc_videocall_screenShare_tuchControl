@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
-import 'audio_broadcast_signaling.dart';
 import 'audio_brodcast.dart';
+import 'audio_signaling.dart';
 
 class AudioRoomListPage extends StatelessWidget {
   final box = GetStorage();
@@ -94,7 +94,6 @@ class AudioRoomListPage extends StatelessWidget {
         builder: (context) => AudioBroadcastPage(
           isBroadcaster: false,
           roomId: roomId,
-          storedEmail: storedEmail,
         ),
       ),
     );
@@ -107,7 +106,6 @@ class AudioRoomListPage extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => AudioBroadcastPage(
-          storedEmail: storedEmail,
           isBroadcaster: true,
           roomId: roomId,
         ),
