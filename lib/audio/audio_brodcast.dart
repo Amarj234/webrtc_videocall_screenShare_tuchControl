@@ -19,7 +19,7 @@ class AudioBroadcastPage extends StatefulWidget {
 
 class _AudioBroadcastPageState extends State<AudioBroadcastPage> {
   late AudioSignaling signaling;
-  final String _userId = DateTime.now().millisecondsSinceEpoch.toString();
+   String _userId = DateTime.now().millisecondsSinceEpoch.toString();
   bool _isMuted = false;
   bool _isConnected = false;
   int _listenerCount = 0;
@@ -33,6 +33,8 @@ class _AudioBroadcastPageState extends State<AudioBroadcastPage> {
   }
 
   void _initSignaling() {
+    final storedEmail = box.read('email');
+    _userId= storedEmail;
     signaling = AudioSignaling(
       userId: _userId,
       roomId: widget.roomId,
@@ -48,7 +50,7 @@ class _AudioBroadcastPageState extends State<AudioBroadcastPage> {
 
     signaling.onUserJoined = (userId) {
       if (widget.isBroadcaster) {
-        setState(() => _listenerCount++);
+        _listenerCount++;
       }
     };
 
@@ -58,7 +60,7 @@ class _AudioBroadcastPageState extends State<AudioBroadcastPage> {
 
         _listenerCount--;
       }
-      setState(() => _remoteStreams.remove(userId));
+       _remoteStreams.remove(userId);
     };
 
     signaling.onError = (error) {

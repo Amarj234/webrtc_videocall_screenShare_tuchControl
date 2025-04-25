@@ -173,21 +173,40 @@ class AudioSignaling {
         final data = doc.data();
         if (data['from'] != peerId) continue;
 
+        final polite = _userId.compareTo(peerId) > 0; // You are polite if your ID is higher
         final offer = RTCSessionDescription(data['sdp'], data['type']);
-        await pc.setRemoteDescription(offer);
-        final answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
 
-        await _db
-            .collection('audio_rooms')
-            .doc(_roomId)
-            .collection('answers')
-            .add({
-          'from': _userId,
-          'to': data['from'],
-          'sdp': answer.sdp,
-          'type': answer.type,
-        });
+        bool makingOffer = pc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer;
+
+        try {
+          if (makingOffer && !polite) {
+            print("⚠️ Offer collision with $peerId. Ignoring because we're impolite.");
+            return;
+          }
+
+          await pc.setRemoteDescription(offer);
+
+          final answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          await _db
+              .collection('audio_rooms')
+              .doc(_roomId)
+              .collection('answers')
+              .doc('$_userId-$peerId')
+              .set({
+            'from': _userId,
+            'to': peerId,
+            'sdp': answer.sdp,
+            'type': answer.type,
+          });
+
+          print("✅ Sent answer to $peerId");
+
+        } catch (e) {
+          print("❌ Failed to process offer from $peerId: $e");
+          onError?.call(e);
+        }
       }
     });
   }
@@ -209,6 +228,8 @@ class AudioSignaling {
       }
     });
   }
+
+  bool _isPolite(String peerId) => _userId.compareTo(peerId) > 0;
 
   void _setupIceCandidateExchange(String peerId, RTCPeerConnection pc) {
     _db

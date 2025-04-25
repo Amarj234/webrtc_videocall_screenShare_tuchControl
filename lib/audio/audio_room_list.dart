@@ -101,7 +101,7 @@ class AudioRoomListPage extends StatelessWidget {
 
   void _createNewRoom(BuildContext context) {
     final storedEmail = box.read('email');
-    final roomId = DateTime.now().millisecondsSinceEpoch.toString();
+    final roomId =storedEmail ?? DateTime.now().millisecondsSinceEpoch.toString();
     Navigator.push(
       context,
       MaterialPageRoute(
